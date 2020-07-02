@@ -1,0 +1,39 @@
+config:
+  Tags: [ {'Key': 'Department Name','Value': 'Collaborative'},{'Key': 'Department Number','Value': '5972'} ]
+  leach:
+    "ApplicationProfile": "leach"
+    "monitorARN": "arn:aws:sns:us-east-1::DevOpsNotifications"
+    "SubnetID": "subnet-"
+    "IamInstanceProfile": "leach-BastianInstanceProfile-e39a7"
+    "BastianSecurityGroups": [ "sg-" ]
+    "BastionTTL": "120"
+    "SSHKey": "/home/ryan/Projects/AWS/awsrd/applicationstack/ssh-keys/ersg-leach-ersgateway-e39a7.pem"
+    "MaxBastionRuntime": 15
+  qa:
+    "ApplicationProfile": "drr-qa"
+    "monitorARN": "arn:aws:sns:us-east-1::OperationsMonitoringNotifications"
+    "SubnetID": "subnet-"
+    "IamInstanceProfile": "qa-BastianInstanceProfile-e39a7"
+    "BastianSecurityGroups": [ "sg-" ]
+    "BastionTTL": "60"
+    "SSHKey": /home/ryan/.ssh/other/ersg-qa-ersgateway-e39a7.pem
+    "MaxBastionRuntime": 15
+    "PrivateSubnetIds": [ 'subnet-', 'subnet-']
+  prod:
+    "ApplicationProfile": "drr-prod"
+    "monitorARN": "arn:aws:sns:us-east-1::DevOpsNotifications"
+    "SubnetID": "subnet-"
+    "IamInstanceProfile": "prod-BastianInstanceProfile-e38a7"
+    "BastianSecurityGroups": [ "sg-" ]
+    "BastionTTL": "20"
+    "SSHKey": /home/ryan/.ssh/other/ersg-prod-ersgateway-e38a7.pem
+    "MaxBastionRuntime": 15
+  dev:
+    "ApplicationProfile": "drr-dev"
+    "monitorARN": "arn:aws:sns:us-east-1::DevOpsNotifications"
+    "SubnetID": "subnet-"
+    "IamInstanceProfile": "leach-BastianInstanceProfile-e39a7"
+    "BastianSecurityGroups": [ "sg-" ]
+    "BastionTTL": "120"
+    "SSHKey": /home/ryan/.ssh/other/ersg-dev-ersgateway-e38a7.pem
+    "MaxBastionRuntime": 15

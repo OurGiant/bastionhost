@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Create a lambda function to terminate expired bastion hosts
+Parameters:
+  MonitoringArn:
+    Type: String
+  MaxBastionRuntime:
+    Type: Number
+    Default: 2
+Resources:
+
+  cleanUpBastionsEvent:
+    DependsOn: lambdaCleanBastions
+    Type: AWS::Events::Rule
+    Properties:
+      RoleArn: !GetAtt BastionCleanupLambdaExecutionRole.Arn
+      Description: Seek and Destroy expired Bastion hosts
+      Name: TriggerBastionHostsCleanup
+      ScheduleExpression: "rate(1 hour)"
+      State: ENABLED
+      Targets:
+        -   Arn: !GetAtt lambdaCleanBastions.Arn
+            Id: RunBastionCleanUpHourly
+
+  cleanUpBastionKeysEvent:
+    DependsOn: lambdaCleanBastionKeys
+    Type: AWS::Events::Rule
+    Properties:
+      RoleArn: !GetAtt BastionCleanupLambdaExecutionRole.Arn
+      Description: Remove all Bastion Keys daily
+      Name: TriggerBastionKeysCleanup
+      ScheduleExpression: "rate(1 day)"
+      State: ENABLED
+      Targets:
+        -   Arn: !GetAtt lambdaCleanBastionKeys.Arn
+            Id: RunBastionKeysCleanUpDaily
+
+  BastionCleanupLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - lambda.amazonaws.com
+              - ec2.amazonaws.com
+              - events.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  CleanBastionsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: CleanBastionsPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+            -
+              Effect: "Allow"
+              Action:
+                - "ec2:TerminateInstances"
+                - "ec2:StopInstances"
+              Resource: "*"
+              Condition:
+                StringLike:
+                  'ec2:ResourceTag/Name': 'bastion-*'
+            -
+              Effect: "Allow"
+              Action:
+                - "ec2:DeleteKeyPair"
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  'ec2:ResourceTag/Type': 'bastion'
+            -
+              Effect: "Allow"
+              Action:
+                - "ec2:DescribeInstances"
+                - "ec2:DescribeKeyPairs"
+              Resource: "*"
+            -
+              Effect: "Allow"
+              Action:
+                - "sns:Publish"
+              Resource: !Ref MonitoringArn
+
+      Roles:
+        - !Ref BastionCleanupLambdaExecutionRole
+
+  lambdaCleanBastions:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: "Seek and Destroy expired Bastion hosts"
+      FunctionName: "BastionCleanupHostsAndKeys"
+      Handler: bastionCleanup.main
+      MemorySize: 128
+      Role: !GetAtt BastionCleanupLambdaExecutionRole.Arn
+      Runtime: python3.7
+      Timeout: 600
+      Environment:
+        Variables:
+          ENV: "AWS"
+          MaxBastionRuntime: !Ref MaxBastionRuntime
+          MONITORARN: !Ref MonitoringArn
+      Code:
+        ZipFile: |
+          def handle(event, context):
+            pass
+
+  lambdaCleanBastionKeys:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: "Seek and Destroy expired Bastion hosts"
+      FunctionName: "BastionCleanupKeys"
+      Handler: index.main
+      MemorySize: 128
+      Role: !GetAtt BastionCleanupLambdaExecutionRole.Arn
+      Runtime: python3.7
+      Timeout: 600
+      Environment:
+        Variables:
+          ENV: "AWS"
+          MONITORARN: !Ref MonitoringArn
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+
+          def main(event,context):
+              awsprofile = 'drr-qa'
+              monitorARN = os.environ['MONITORARN']
+              env = os.environ['ENV']
+              if env != 'AWS':
+                  session = boto3.Session(profile_name=awsprofile, region_name='us-east-1')
+              else:
+                  session = boto3.Session()
+
+              client_ec2 = session.client('ec2')
+              client_sns = session.client('sns')
+
+              bastionKeys = client_ec2.describe_key_pairs(
+                  Filters=[
+                      {
+                          'Name': 'key-name',
+                          'Values': [
+                              'bastion*'
+                          ]
+                      }
+                  ]
+              )
+              if len(bastionKeys['KeyPairs']) > 0:
+                  for key in bastionKeys['KeyPairs']:
+                      keyName = key['KeyName']
+                      print(f'Delete Key {keyName}')
+                      client_ec2.delete_key_pair(
+                          KeyName=keyName,
+                          DryRun=False
+                      )
+                      notificationSubject = "Delete Bastion Key "+keyName
+                      notificationMessage = "Delete Bastion Key "+keyName
+                      client_sns.publish(
+                          TopicArn=monitorARN,
+                          Message=notificationMessage,
+                          Subject=notificationSubject
+                      )
+              else:
+                  print('No keys to delete')
